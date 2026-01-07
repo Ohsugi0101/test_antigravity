@@ -482,6 +482,73 @@
             actionState[v.id] = { timedOut: false, banned: false };
         });
 
+        // --- Authentication & View Logic ---
+        const CLIENT_ID_KEY = 'twitch_client_id';
+        const TOKEN_KEY = 'twitch_access_token';
+        const LOGOUT_KEY = 'twitch_manual_logout';
+
+        function initAuth() {
+            // 1. Check URL Hash for OAuth Token
+            const hash = window.location.hash;
+            if (hash.includes('access_token')) {
+                const params = new URLSearchParams(hash.substring(1));
+                const token = params.get('access_token');
+                if (token) {
+                    localStorage.setItem(TOKEN_KEY, token);
+                    localStorage.removeItem(LOGOUT_KEY);
+                    window.location.hash = '';
+                    showDashboard();
+                    return;
+                }
+            }
+
+            // 2. Check LocalStorage for Token
+            const token = localStorage.getItem(TOKEN_KEY);
+            if (token) {
+                showDashboard();
+                return;
+            }
+
+            // 3. Auto-Login Flow
+            const storedClientId = localStorage.getItem(CLIENT_ID_KEY);
+            if (storedClientId) {
+                document.getElementById('clientIdInput').value = storedClientId;
+                const wasLoggedOut = localStorage.getItem(LOGOUT_KEY);
+                if (!wasLoggedOut) {
+                    login();
+                }
+            }
+        }
+
+        function login() {
+            const clientId = document.getElementById('clientIdInput').value.trim();
+            if (!clientId) {
+                showNotification('Client IDを入力してください', 'error');
+                return;
+            }
+
+            localStorage.setItem(CLIENT_ID_KEY, clientId);
+            localStorage.removeItem(LOGOUT_KEY);
+
+            const redirectUri = window.location.origin + window.location.pathname;
+            const scopes = 'moderator:read:chatters';
+            const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(scopes)}`;
+
+            window.location.href = authUrl;
+        }
+
+        function logout() {
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.setItem(LOGOUT_KEY, 'true');
+            window.location.reload();
+        }
+
+        function showDashboard() {
+            document.getElementById('loginView').classList.add('hidden');
+            document.getElementById('dashboardView').classList.remove('hidden');
+            renderTable();
+        }
+
         function formatTime(date) {
             return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
         }
