@@ -398,9 +398,13 @@
             <p style="color: var(--text-secondary); max-width: 500px; margin-bottom: 2rem;">
                 自身の配信の視聴者を管理・一覧表示するためのダッシュボードです。<br>
                 利用するにはTwitchアカウントでログインしてください。
-                自身の配信の視聴者を管理・一覧表示するためのダッシュボードです。<br>
-                利用するにはTwitchアカウントでログインしてください。
             </p>
+
+            <!-- Debug Info -->
+            <div id="debugInfo"
+                style="margin-bottom: 2rem; padding: 1rem; background: rgba(0,0,0,0.5); border: 1px solid #333; font-family: monospace; font-size: 0.8rem; text-align: left; max-width: 800px; word-break: break-all;">
+                Debug Info will appear here...
+            </div>
 
             <!-- Removed Client ID Input -->
 
@@ -503,6 +507,20 @@
 
         async function initAuth() {
             const params = parseHashParams();
+
+            // DEBUG OUTPUT
+            const debugEl = document.getElementById('debugInfo');
+            if (debugEl) {
+                debugEl.innerHTML = `
+                    <strong>URL:</strong> ${window.location.href}<br>
+                    <strong>Origin:</strong> ${window.location.origin}<br>
+                    <strong>Path:</strong> ${window.location.pathname}<br>
+                    <strong>Hash:</strong> ${window.location.hash}<br>
+                    <strong>Search:</strong> ${window.location.search}<br>
+                    <strong>Params Found:</strong> ${Object.keys(params).join(', ') || 'None'}<br>
+                    <strong>Stored Token:</strong> ${localStorage.getItem(TOKEN_KEY) ? 'Yes' : 'No'}
+                `;
+            }
 
             // Check for errors from Twitch
             if (params.error) {
