@@ -475,11 +475,16 @@
         const LOGOUT_KEY = 'twitch_manual_logout';
 
         function parseHashParams() {
-            // Example: #access_token=...&scope=...&token_type=bearer&expires_in=14400
-            const hash = window.location.hash.startsWith('#') ? window.location.hash.substring(1) : '';
-            const params = new URLSearchParams(hash);
+            // 1) Search params (query string) - Check for errors or code
+            const search = new URLSearchParams(window.location.search);
             const obj = {};
-            for (const [k, v] of params.entries()) obj[k] = v;
+            for (const [k, v] of search.entries()) obj[k] = v;
+
+            // 2) Hash params (fragment) - Access token
+            const hashStr = window.location.hash.startsWith('#') ? window.location.hash.substring(1) : '';
+            const hashParams = new URLSearchParams(hashStr);
+            for (const [k, v] of hashParams.entries()) obj[k] = v;
+
             return obj;
         }
 
@@ -497,13 +502,20 @@
         }
 
         async function initAuth() {
+            const params = parseHashParams();
+
+            // Check for errors from Twitch
+            if (params.error) {
+                showNotification(`Login Error: ${params.error} - ${params.error_description}`, 'error');
+                return;
+            }
+
             // 1) Returning from Twitch (Implicit Flow): token is in URL hash
-            const hash = parseHashParams();
-            if (hash.access_token) {
-                localStorage.setItem(TOKEN_KEY, hash.access_token);
+            if (params.access_token) {
+                localStorage.setItem(TOKEN_KEY, params.access_token);
 
                 // expires_in is seconds
-                const expiresIn = parseInt(hash.expires_in || '0', 10);
+                const expiresIn = parseInt(params.expires_in || '0', 10);
                 if (expiresIn) {
                     localStorage.setItem(EXPIRES_AT_KEY, String(Date.now() + expiresIn * 1000));
                 } else {
@@ -525,7 +537,8 @@
             // 3) Auto-login: With hardcoded ID, just check if we were manually logged out
             const wasLoggedOut = localStorage.getItem(LOGOUT_KEY);
             if (!wasLoggedOut) {
-                login();
+                // login(); // DISABLED TO PREVENT LOOP - User must click Connect manually
+                console.log("Auto-login skipped to prevent loop. Please click Connect.");
             }
         }
 
@@ -535,7 +548,8 @@
             localStorage.removeItem(LOGOUT_KEY);
 
             // Redirect URI must match the one registered in Twitch Developer Console
-            const redirectUri = window.location.href.split('#')[0].split('?')[0];
+            // Ensure we don't have double hashes or queries
+            const redirectUri = window.location.origin + window.location.pathname;
 
             // Scopes: add what you need
             // moderator:read:chatters is in your original sample
