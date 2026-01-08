@@ -465,12 +465,14 @@
         // State for mock actions
         const actionState = {}; // { userId: { timedOut: bool, banned: bool } }
         viewers.forEach(v => { actionState[v.id] = { timedOut: false, banned: false }; });
+        viewers.forEach(v => { actionState[v.id] = { timedOut: false, banned: false }; });
 
         // --- Authentication & View Logic (Twitch OAuth Implicit Grant Flow) ---
         // ✅ This works with a static HTML file (no backend) because it doesn't use client_secret.
         // Twitch returns the access token in the URL fragment (#...).
         const CLIENT_ID = '3glq6alunxi9ed1vkf7dfcng8igoh7'; // Hardcoded Client ID
         const TOKEN_KEY = 'twitch_access_token';
+        const EXPIRES_AT_KEY = 'twitch_token_expires_at'; // epoch ms
         const EXPIRES_AT_KEY = 'twitch_token_expires_at'; // epoch ms
         const LOGOUT_KEY = 'twitch_manual_logout';
 
@@ -481,133 +483,164 @@
             const obj = {};
             for (const [k, v] of params.entries()) obj[k] = v;
             return obj;
-        }
 
-        function clearUrlHash() {
-            const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + window.location.search;
-            window.history.replaceState({}, document.title, cleanUrl);
-        }
+            function parseHashParams() {
+                // Example: #access_token=...&scope=...&token_type=bearer&expires_in=14400
+                const hash = window.location.hash.startsWith('#') ? window.location.hash.substring(1) : '';
+                const params = new URLSearchParams(hash);
+                const obj = {};
+                for (const [k, v] of params.entries()) obj[k] = v;
+                return obj;
+            }
 
-        function isTokenValid() {
-            const token = localStorage.getItem(TOKEN_KEY);
-            if (!token) return false;
-            const exp = parseInt(localStorage.getItem(EXPIRES_AT_KEY) || '0', 10);
-            if (!exp) return true; // fallback (shouldn't happen)
-            return Date.now() < exp - 30_000; // 30s skew
-        }
-
-        async function initAuth() {
-            // 1) Returning from Twitch (Implicit Flow): token is in URL hash
-            const hash = parseHashParams();
-            if (hash.access_token) {
-                localStorage.setItem(TOKEN_KEY, hash.access_token);
-
-                // expires_in is seconds
-                const expiresIn = parseInt(hash.expires_in || '0', 10);
-                if (expiresIn) {
-                    localStorage.setItem(EXPIRES_AT_KEY, String(Date.now() + expiresIn * 1000));
-                } else {
-                    localStorage.removeItem(EXPIRES_AT_KEY);
+            function clearUrlHash() {
+                const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + window.location.search;
+                window.history.replaceState({}, document.title, cleanUrl);
+                function clearUrlHash() {
+                    const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + window.location.search;
+                    window.history.replaceState({}, document.title, cleanUrl);
                 }
 
-                localStorage.removeItem(LOGOUT_KEY);
-                clearUrlHash();
-                showDashboard();
-                return;
-            }
+                function isTokenValid() {
+                    const token = localStorage.getItem(TOKEN_KEY);
+                    if (!token) return false;
+                    const exp = parseInt(localStorage.getItem(EXPIRES_AT_KEY) || '0', 10);
+                    if (!exp) return true; // fallback (shouldn't happen)
+                    return Date.now() < exp - 30_000; // 30s skew
+                    function isTokenValid() {
+                        const token = localStorage.getItem(TOKEN_KEY);
+                        if (!token) return false;
+                        const exp = parseInt(localStorage.getItem(EXPIRES_AT_KEY) || '0', 10);
+                        if (!exp) return true; // fallback (shouldn't happen)
+                        return Date.now() < exp - 30_000; // 30s skew
+                    }
 
-            // 2) Already logged in?
-            if (isTokenValid()) {
-                showDashboard();
-                return;
-            }
+                    async function initAuth() {
+                        // 1) Returning from Twitch (Implicit Flow): token is in URL hash
+                        const hash = parseHashParams();
+                        if (hash.access_token) {
+                            localStorage.setItem(TOKEN_KEY, hash.access_token);
 
-            // 3) Auto-login: With hardcoded ID, just check if we were manually logged out
-            const wasLoggedOut = localStorage.getItem(LOGOUT_KEY);
-            if (!wasLoggedOut) {
-                login();
-            }
-        }
+                            // expires_in is seconds
+                            const expiresIn = parseInt(hash.expires_in || '0', 10);
+                            if (expiresIn) {
+                                localStorage.setItem(EXPIRES_AT_KEY, String(Date.now() + expiresIn * 1000));
+                            } else {
+                                localStorage.removeItem(EXPIRES_AT_KEY);
+                            }
 
-        function login() {
-            // Use hardcoded ID
-            const clientId = CLIENT_ID;
-            localStorage.removeItem(LOGOUT_KEY);
+                            localStorage.removeItem(LOGOUT_KEY);
+                            clearUrlHash();
+                            showDashboard();
+                            return;
+                        }
 
-            // Redirect URI must match the one registered in Twitch Developer Console
-            const redirectUri = window.location.href.split('#')[0].split('?')[0];
+                        // 2) Already logged in?
+                        if (isTokenValid()) {
+                            showDashboard();
+                            return;
+                        }
 
-            // Scopes: add what you need
-            // moderator:read:chatters is in your original sample
-            const scopes = 'moderator:read:chatters';
+                        // 3) Auto-login: With hardcoded ID, just check if we were manually logged out
+                        const wasLoggedOut = localStorage.getItem(LOGOUT_KEY);
+                        if (!wasLoggedOut) {
+                            login();
+                        }
+                    }
 
-            // Implicit grant flow => response_type=token
-            const authUrl =
-                `https://id.twitch.tv/oauth2/authorize` +
-                `?client_id=${encodeURIComponent(clientId)}` +
-                `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-                `&response_type=token` +
-                `&scope=${encodeURIComponent(scopes)}`;
+                    function login() {
+                        // Use hardcoded ID
+                        const clientId = CLIENT_ID;
+                        localStorage.removeItem(LOGOUT_KEY);
 
-            window.location.href = authUrl;
-        }
+                        // Redirect URI must match the one registered in Twitch Developer Console
+                        const redirectUri = window.location.href.split('#')[0].split('?')[0];
 
-        function logout() {
-            localStorage.removeItem(TOKEN_KEY);
-            localStorage.removeItem(EXPIRES_AT_KEY);
-            localStorage.setItem(LOGOUT_KEY, 'true');
-            window.location.reload();
-        }
+                        // Scopes: add what you need
+                        // moderator:read:chatters is in your original sample
+                        // Redirect URI must match the one registered in Twitch Developer Console
+                        const redirectUri = window.location.href.split('#')[0].split('?')[0];
 
-        function showDashboard() {
-            document.getElementById('loginView').classList.add('hidden');
-            document.getElementById('dashboardView').classList.remove('hidden');
-            renderTable();
-        }
+                        // Scopes: add what you need
+                        // moderator:read:chatters is in your original sample
+                        const scopes = 'moderator:read:chatters';
 
-        function formatTime(date) {
-            return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-        }
+                        // Implicit grant flow => response_type=token
+                        const authUrl =
+                            `https://id.twitch.tv/oauth2/authorize` +
+                            `?client_id=${encodeURIComponent(clientId)}` +
+                            `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+                            `&response_type=token` +
+                            `&scope=${encodeURIComponent(scopes)}`;
 
-        function formatDuration(date) {
-            const now = new Date();
-            const diff = now - date;
+                        // Implicit grant flow => response_type=token
+                        const authUrl =
+                            `https://id.twitch.tv/oauth2/authorize` +
+                            `?client_id=${encodeURIComponent(clientId)}` +
+                            `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+                            `&response_type=token` +
+                            `&scope=${encodeURIComponent(scopes)}`;
 
-            const hours = Math.floor(diff / (1000 * 60 * 60));
-            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+                        window.location.href = authUrl;
+                    }
 
-            if (hours > 0) return `${hours}時間 ${minutes}分`;
-            return `${minutes}分 ${seconds}秒`;
-        }
+                    function logout() {
+                        localStorage.removeItem(TOKEN_KEY);
+                        localStorage.removeItem(EXPIRES_AT_KEY);
+                        localStorage.removeItem(EXPIRES_AT_KEY);
+                        localStorage.setItem(LOGOUT_KEY, 'true');
+                        window.location.reload();
+                    }
 
-        function getSubBadgeClass(tier) {
-            if (tier.includes('1')) return 'badge-sub-t1';
-            if (tier.includes('2')) return 'badge-sub-t2';
-            if (tier.includes('3')) return 'badge-sub-t3';
-            return 'badge-none';
-        }
+                    function showDashboard() {
+                        document.getElementById('loginView').classList.add('hidden');
+                        document.getElementById('dashboardView').classList.remove('hidden');
+                        renderTable();
+                    }
 
-        function getAvatarInitials(name) {
-            return name.substring(0, 2).toUpperCase();
-        }
+                    function formatTime(date) {
+                        return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+                    }
 
-        function renderTable() {
-            const tbody = document.querySelector('#viewerTable tbody');
-            const searchText = document.getElementById('searchInput').value.toLowerCase();
+                    function formatDuration(date) {
+                        const now = new Date();
+                        const diff = now - date;
 
-            tbody.innerHTML = '';
+                        const hours = Math.floor(diff / (1000 * 60 * 60));
+                        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
-            const filteredViewers = viewers.filter(v =>
-                v.name.toLowerCase().includes(searchText) ||
-                v.id.includes(searchText)
-            );
+                        if (hours > 0) return `${hours}時間 ${minutes}分`;
+                        return `${minutes}分 ${seconds}秒`;
+                    }
 
-            filteredViewers.forEach(viewer => {
-                const tr = document.createElement('tr');
-                const state = actionState[viewer.id];
+                    function getSubBadgeClass(tier) {
+                        if (tier.includes('1')) return 'badge-sub-t1';
+                        if (tier.includes('2')) return 'badge-sub-t2';
+                        if (tier.includes('3')) return 'badge-sub-t3';
+                        return 'badge-none';
+                    }
 
-                tr.innerHTML = `
+                    function getAvatarInitials(name) {
+                        return name.substring(0, 2).toUpperCase();
+                    }
+
+                    function renderTable() {
+                        const tbody = document.querySelector('#viewerTable tbody');
+                        const searchText = document.getElementById('searchInput').value.toLowerCase();
+
+                        tbody.innerHTML = '';
+
+                        const filteredViewers = viewers.filter(v =>
+                            v.name.toLowerCase().includes(searchText) ||
+                            v.id.includes(searchText)
+                        );
+
+                        filteredViewers.forEach(viewer => {
+                            const tr = document.createElement('tr');
+                            const state = actionState[viewer.id];
+
+                            tr.innerHTML = `
                     <td>
                         <div class="user-cell">
                             <div class="avatar">${getAvatarInitials(viewer.name)}</div>
@@ -624,74 +657,77 @@
                     <td>
                         <div class="actions-cell">
                             ${!state.timedOut
-                        ? `<button class="btn btn-timeout" onclick="handleTimeout('${viewer.id}', true)">実行</button>`
-                        : `<button class="btn btn-untimeout" onclick="handleTimeout('${viewer.id}', false)">解除</button>`
-                    }
+                                    ? `<button class="btn btn-timeout" onclick="handleTimeout('${viewer.id}', true)">実行</button>`
+                                    : `<button class="btn btn-untimeout" onclick="handleTimeout('${viewer.id}', false)">解除</button>`
+                                }
                         </div>
                     </td>
                     <td>
                         <div class="actions-cell">
                             ${!state.banned
-                        ? `<button class="btn btn-ban" onclick="handleBan('${viewer.id}', true)">実行</button>`
-                        : `<button class="btn btn-unban" onclick="handleBan('${viewer.id}', false)">解除</button>`
-                    }
+                                    ? `<button class="btn btn-ban" onclick="handleBan('${viewer.id}', true)">実行</button>`
+                                    : `<button class="btn btn-unban" onclick="handleBan('${viewer.id}', false)">解除</button>`
+                                }
                         </div>
                     </td>
                 `;
-                tbody.appendChild(tr);
-            });
-        }
+                            tbody.appendChild(tr);
+                        });
+                    }
 
-        // Actions (mock)
-        window.handleTimeout = (id, isExecute) => {
-            const user = viewers.find(v => v.id === id);
-            actionState[id].timedOut = isExecute;
-            showNotification(isExecute
-                ? `${user.name} をタイムアウトしました`
-                : `${user.name} のタイムアウトを解除しました`, 'success');
-            renderTable();
-        };
+                    // Actions (mock)
+                    // Actions (mock)
+                    window.handleTimeout = (id, isExecute) => {
+                        const user = viewers.find(v => v.id === id);
+                        actionState[id].timedOut = isExecute;
+                        showNotification(isExecute
+                            ? `${user.name} をタイムアウトしました`
+                            : `${user.name} のタイムアウトを解除しました`, 'success');
+                        renderTable();
+                    };
 
-        window.handleBan = (id, isExecute) => {
-            const user = viewers.find(v => v.id === id);
-            actionState[id].banned = isExecute;
-            showNotification(isExecute
-                ? `${user.name} をBANしました`
-                : `${user.name} のBANを解除しました`, isExecute ? 'error' : 'success');
-            renderTable();
-        };
+                    window.handleBan = (id, isExecute) => {
+                        const user = viewers.find(v => v.id === id);
+                        actionState[id].banned = isExecute;
+                        showNotification(isExecute
+                            ? `${user.name} をBANしました`
+                            : `${user.name} のBANを解除しました`, isExecute ? 'error' : 'success');
+                        renderTable();
+                    };
 
-        // Notifications
-        function showNotification(msg, type) {
-            const el = document.getElementById('notification');
-            const msgEl = document.getElementById('notifMessage');
+                    // Notifications
+                    function showNotification(msg, type) {
+                        const el = document.getElementById('notification');
+                        const msgEl = document.getElementById('notifMessage');
 
-            el.className = `notification ${type}`;
-            msgEl.textContent = msg;
+                        el.className = `notification ${type}`;
+                        msgEl.textContent = msg;
 
-            el.classList.add('show');
+                        el.classList.add('show');
 
-            setTimeout(() => {
-                el.classList.remove('show');
-            }, 3000);
-        }
+                        setTimeout(() => {
+                            el.classList.remove('show');
+                        }, 3000);
+                    }
 
-        // Init
-        initAuth();
+                    // Init
+                    // Init
+                    initAuth();
 
-        // Event Listeners
-        document.getElementById('loginBtn').addEventListener('click', login);
-        document.getElementById('disconnectBtn').addEventListener('click', logout);
+                    // Event Listeners
+                    document.getElementById('loginBtn').addEventListener('click', login);
+                    document.getElementById('disconnectBtn').addEventListener('click', logout);
 
-        setInterval(() => {
-            document.querySelectorAll('.duration-cell').forEach(cell => {
-                const time = parseInt(cell.getAttribute('data-time'));
-                cell.textContent = formatDuration(new Date(time));
-            });
-        }, 1000);
 
-        // Search Listener
-        document.getElementById('searchInput').addEventListener('input', renderTable);
+                    setInterval(() => {
+                        document.querySelectorAll('.duration-cell').forEach(cell => {
+                            const time = parseInt(cell.getAttribute('data-time'));
+                            cell.textContent = formatDuration(new Date(time));
+                        });
+                    }, 1000);
+
+                    // Search Listener
+                    document.getElementById('searchInput').addEventListener('input', renderTable);
 
     </script>
 </body>
